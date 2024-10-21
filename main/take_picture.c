@@ -52,10 +52,10 @@ static camera_config_t camera_config = {
     .pin_href   = HREF_GPIO_NUM,
     .pin_pclk   = PCLK_GPIO_NUM,
 
-    .xclk_freq_hz = 20000000,
+    .xclk_freq_hz = 40000000,
     .pixel_format = PIXFORMAT_JPEG,
     .frame_size = FRAMESIZE_QQVGA,
-    .jpeg_quality = 12,
+    .jpeg_quality = 8,
     .fb_count = 1,
     .fb_location = CAMERA_FB_IN_DRAM,
 };
