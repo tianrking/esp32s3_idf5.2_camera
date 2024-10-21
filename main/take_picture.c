@@ -6,6 +6,7 @@
 #include "nvs_flash.h"
 #include "esp_wifi.h"
 #include "freertos/event_groups.h"
+#include "index_html.h"  // 引入HTML文件
 
 #define TAG "camera_http"
 
@@ -19,6 +20,7 @@
 #define XCLK_GPIO_NUM    15
 #define SIOD_GPIO_NUM    4
 #define SIOC_GPIO_NUM    5
+
 #define Y9_GPIO_NUM      16
 #define Y8_GPIO_NUM      17
 #define Y7_GPIO_NUM      18
@@ -32,25 +34,27 @@
 #define PCLK_GPIO_NUM    13
 
 static camera_config_t camera_config = {
-    .pin_pwdn = PWDN_GPIO_NUM,
-    .pin_reset = RESET_GPIO_NUM,
-    .pin_xclk = XCLK_GPIO_NUM,
+    .pin_pwdn     = PWDN_GPIO_NUM,
+    .pin_reset    = RESET_GPIO_NUM,
+    .pin_xclk     = XCLK_GPIO_NUM,
     .pin_sccb_sda = SIOD_GPIO_NUM,
     .pin_sccb_scl = SIOC_GPIO_NUM,
-    .pin_d7 = Y9_GPIO_NUM,
-    .pin_d6 = Y8_GPIO_NUM,
-    .pin_d5 = Y7_GPIO_NUM,
-    .pin_d4 = Y6_GPIO_NUM,
-    .pin_d3 = Y5_GPIO_NUM,
-    .pin_d2 = Y4_GPIO_NUM,
-    .pin_d1 = Y3_GPIO_NUM,
-    .pin_d0 = Y2_GPIO_NUM,
-    .pin_vsync = VSYNC_GPIO_NUM,
-    .pin_href = HREF_GPIO_NUM,
-    .pin_pclk = PCLK_GPIO_NUM,
+
+    .pin_d7     = Y9_GPIO_NUM,
+    .pin_d6     = Y8_GPIO_NUM,
+    .pin_d5     = Y7_GPIO_NUM,
+    .pin_d4     = Y6_GPIO_NUM,
+    .pin_d3     = Y5_GPIO_NUM,
+    .pin_d2     = Y4_GPIO_NUM,
+    .pin_d1     = Y3_GPIO_NUM,
+    .pin_d0     = Y2_GPIO_NUM,
+    .pin_vsync  = VSYNC_GPIO_NUM,
+    .pin_href   = HREF_GPIO_NUM,
+    .pin_pclk   = PCLK_GPIO_NUM,
+
     .xclk_freq_hz = 20000000,
     .pixel_format = PIXFORMAT_JPEG,
-    .frame_size = FRAMESIZE_QVGA,
+    .frame_size = FRAMESIZE_QQVGA,
     .jpeg_quality = 12,
     .fb_count = 1,
     .fb_location = CAMERA_FB_IN_DRAM,
@@ -81,18 +85,16 @@ static void wifi_init() {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
 
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
-
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                        &wifi_event_handler, NULL, &instance_any_id);
+                                        &wifi_event_handler, NULL, NULL);
     esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                        &wifi_event_handler, NULL, &instance_got_ip);
+                                        &wifi_event_handler, NULL, NULL);
 
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = WIFI_SSID,
             .password = WIFI_PASS,
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
     esp_wifi_set_mode(WIFI_MODE_STA);
@@ -100,36 +102,54 @@ static void wifi_init() {
     esp_wifi_start();
 }
 
-static esp_err_t stream_handler(httpd_req_t *req) {
+// 替换原先的 stream_handler 为 capture_handler
+static esp_err_t capture_handler(httpd_req_t *req) {
     camera_fb_t *fb = NULL;
     esp_err_t res = ESP_OK;
-    char part_buf[128];
 
-    res = httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=123456789000000000000987654321");
-    if (res != ESP_OK) return res;
-
-    while (true) {
-        fb = esp_camera_fb_get();
-        if (!fb) {
-            ESP_LOGE(TAG, "Camera capture failed");
-            res = ESP_FAIL;
-            break;
-        }
-
-        size_t hlen = snprintf(part_buf, sizeof(part_buf),
-                               "--123456789000000000000987654321\r\n"
-                               "Content-Type: image/jpeg\r\n"
-                               "Content-Length: %u\r\n\r\n", fb->len);
-        res = httpd_resp_send_chunk(req, part_buf, hlen);
-        if (res == ESP_OK) {
-            res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
-        }
-        esp_camera_fb_return(fb);
-        if (res != ESP_OK) break;
+    fb = esp_camera_fb_get();
+    if (!fb) {
+        ESP_LOGE(TAG, "Camera capture failed");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
     }
 
-    httpd_resp_send_chunk(req, "--123456789000000000000987654321--\r\n", 38);
+    res = httpd_resp_set_type(req, "image/jpeg");
+    if (res == ESP_OK) {
+        res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
+    }
+    esp_camera_fb_return(fb);
     return res;
+}
+
+static esp_err_t index_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, (const char *)main_index_html, main_index_html_len);
+}
+
+static esp_err_t control_handler(httpd_req_t *req) {
+    char buf[32];
+    int ret = httpd_req_get_url_query_str(req, buf, sizeof(buf));
+    if (ret == ESP_OK) {
+        char cmd[16];
+        if (httpd_query_key_value(buf, "cmd", cmd, sizeof(cmd)) == ESP_OK) {
+            ESP_LOGI(TAG, "Command received: %s", cmd);
+            // 在这里添加控制逻辑，例如驱动电机或执行特定操作
+            if (strcmp(cmd, "forward") == 0) {
+                // 向前移动的代码
+            } else if (strcmp(cmd, "backward") == 0) {
+                // 向后移动的代码
+            } else if (strcmp(cmd, "left") == 0) {
+                // 左转的代码
+            } else if (strcmp(cmd, "right") == 0) {
+                // 右转的代码
+            } else if (strcmp(cmd, "stop") == 0) {
+                // 停止的代码
+            }
+        }
+    }
+    httpd_resp_send(req, "OK", 2);
+    return ESP_OK;
 }
 
 static esp_err_t start_camera_server() {
@@ -138,44 +158,54 @@ static esp_err_t start_camera_server() {
 
     esp_err_t ret = httpd_start(&server, &config);
     if (ret == ESP_OK) {
-        httpd_uri_t uri_stream = {
-            .uri = "/stream",
+        httpd_uri_t uri_index = {
+            .uri = "/",
             .method = HTTP_GET,
-            .handler = stream_handler,
+            .handler = index_handler,
             .user_ctx = NULL
         };
-        httpd_register_uri_handler(server, &uri_stream);
-        ESP_LOGI(TAG, "Camera stream available at: /stream");
+        httpd_register_uri_handler(server, &uri_index);
+
+        httpd_uri_t uri_capture = {
+            .uri = "/capture",
+            .method = HTTP_GET,
+            .handler = capture_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &uri_capture);
+
+        httpd_uri_t uri_control = {
+            .uri = "/control",
+            .method = HTTP_GET,
+            .handler = control_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &uri_control);
+
+        ESP_LOGI(TAG, "Camera server started");
     }
     return ret;
 }
 
 void app_main() {
+    // 初始化NVS
     esp_err_t ret = nvs_flash_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize NVS");
         return;
     }
 
+    // 初始化Wi-Fi
     wifi_init();
+    xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 
-    EventBits_t bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
-                                           pdFALSE, pdTRUE, portMAX_DELAY);
-    if (bits & CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected to WiFi");
-    }
-
-    ret = esp_camera_init(&camera_config);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Camera initialization failed with error 0x%x", ret);
+    // 初始化摄像头
+    esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
         return;
     }
 
-    if (start_camera_server() != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start camera server");
-        return;
-    }
-
-    ESP_LOGI(TAG, "HTTP server started, streaming at: /stream");
+    // 启动Web服务器
+    start_camera_server();
 }
-

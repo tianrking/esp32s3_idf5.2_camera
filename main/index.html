@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ESP32-CAM 控制</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            margin-top: 20px;
+        }
+        #stream {
+            width: 320px;
+            height: 240px;
+            background-color: #000;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 80px);
+            grid-template-rows: repeat(3, 80px);
+            gap: 10px;
+        }
+        .controls button {
+            width: 80px;
+            height: 80px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .controls .empty {
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <h1>ESP32-CAM 控制</h1>
+    <img id="stream" src="/capture" alt="ESP32-CAM 实时流">
+    <div class="controls">
+        <button class="empty"></button>
+        <button onclick="sendCommand('forward')">▲</button>
+        <button class="empty"></button>
+        <button onclick="sendCommand('left')">◀</button>
+        <button onclick="sendCommand('stop')">■</button>
+        <button onclick="sendCommand('right')">▶</button>
+        <button class="empty"></button>
+        <button onclick="sendCommand('backward')">▼</button>
+        <button class="empty"></button>
+    </div>
+
+    <script>
+        function updateImage() {
+            var img = document.getElementById('stream');
+            img.src = '/capture?_ts=' + new Date().getTime();
+        }
+        setInterval(updateImage, 100); // 每100毫秒更新一次图像
+
+        function sendCommand(direction) {
+            fetch(`/control?cmd=${direction}`)
+                .then(response => response.text())
+                .then(data => console.log('Response:', data))
+                .catch(error => console.error('Error:', error));
+        }
+
+        // 添加键盘控制，方便遥控小车
+        document.addEventListener('keydown', function(event) {
+            switch(event.key) {
+                case 'ArrowUp':
+                    sendCommand('forward');
+                    break;
+                case 'ArrowDown':
+                    sendCommand('backward');
+                    break;
+                case 'ArrowLeft':
+                    sendCommand('left');
+                    break;
+                case 'ArrowRight':
+                    sendCommand('right');
+                    break;
+                case ' ':
+                    sendCommand('stop');
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>
