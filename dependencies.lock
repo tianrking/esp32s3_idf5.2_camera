@@ -1,0 +1,16 @@
+dependencies:
+  espressif/esp32-camera:
+    dependencies: []
+    source:
+      path: /home/w0x7ce/Desktop/esp32cam_radio/esp32-camera
+      type: local
+    version: '*'
+  idf:
+    source:
+      type: idf
+    version: 5.2.2
+direct_dependencies:
+- espressif/esp32-camera
+manifest_hash: 9cdee4089e30aed12bc010bdc3c422ca2b3a7795cfc956a552af0e4734593bae
+target: esp32s3
+version: 2.0.0
